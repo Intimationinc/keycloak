@@ -1,4 +1,4 @@
-module github.com/intimationinc/keycloak
+module github.com/Intimationinc/keycloak
 
 go 1.15
 
