@@ -14,9 +14,8 @@ type KeycloakUser struct {
 	LocalUserID string
 	Name        string
 	Email       string
-	Phone       string
 	Role        Role
-	Plan        string
+	Attribute   map[string][]string
 }
 
 // KeycloakUserUpdate update keycloak user

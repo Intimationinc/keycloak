@@ -157,13 +157,7 @@ func (c *Client) CreateUser(user *KeycloakUser, password string, temporary bool)
 		EmailVerified: gocloak.BoolP(false),
 		Enabled:       gocloak.BoolP(true),
 		FirstName:     &user.Name,
-		Attributes: map[string][]string{
-			"phoneNumber":         {user.Phone},
-			"phoneNumberVerified": {"false"},
-			"plan":                {user.Plan},
-			"local_user_id":       {user.LocalUserID},
-			"role":                {user.Role.String()},
-		},
+		Attributes:    user.Attribute,
 		Credentials: []*gocloak.CredentialRepresentation{
 			{
 				Temporary: gocloak.BoolP(temporary),
