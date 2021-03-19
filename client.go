@@ -126,7 +126,7 @@ func (c *Client) AdminExpiresIn() time.Duration {
 }
 
 // CreateUser create kc user
-func (c *Client) CreateUser(user *KeycloakUser, password string) error {
+func (c *Client) CreateUser(user *KeycloakUser, password string, temporary bool) error {
 	roles := []gocloak.Role{}
 
 	c.ac.mu.RLock()
@@ -166,7 +166,7 @@ func (c *Client) CreateUser(user *KeycloakUser, password string) error {
 		},
 		Credentials: []*gocloak.CredentialRepresentation{
 			{
-				Temporary: gocloak.BoolP(false),
+				Temporary: gocloak.BoolP(temporary),
 				Type:      gocloak.StringP("password"),
 				Value:     &password,
 			},
