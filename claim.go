@@ -10,7 +10,6 @@ import (
 // Claim keycloak jwt token
 type Claim struct {
 	clientID, iss string
-	Role          Role
 	jwt.StandardClaims
 	AuthorizedParty     string   `json:"azp"`
 	Name                string   `json:"name"`
@@ -19,10 +18,8 @@ type Claim struct {
 	PhoneNumber         string   `json:"phone_number"`
 	PhoneNumberVerified bool     `json:"phone_number_verified"`
 	Plan                string   `json:"plan"`
+	Groups              []string `json:"groups"`
 	LocalUserID         null.Int `json:"local_user_id"`
-	ResourceAccess      map[string]struct {
-		Roles []string `json:"roles"`
-	} `json:"resource_access"`
 }
 
 // Valid validate the jwt token
@@ -32,15 +29,5 @@ func (cl *Claim) Valid() error {
 		return ErrInvalidToken
 	}
 
-	found := false
-	for _, r := range cl.ResourceAccess[cl.clientID].Roles {
-		if cl.Role == Role(r) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return ErrInvalidToken
-	}
 	return nil
 }

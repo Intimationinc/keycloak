@@ -2,6 +2,7 @@ package keycloak
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -9,11 +10,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// cleint errors
+// client errors
 var (
 	ErrInvalidToken   = errors.New("invalid token")
 	ErrClientNotFound = errors.New("client not found")
-	ErrRoleNotFound   = errors.New("role not found")
 	ErrUserNotFound   = errors.New("user not found")
 )
 
@@ -132,25 +132,7 @@ func (c *Client) CreateUser(user *KeycloakUser, password string, temporary bool)
 	c.ac.mu.RLock()
 	defer c.ac.mu.RUnlock()
 
-	rls, err := c.kc.GetClientRoles(c.ac.admin.AccessToken, c.realm, c.client.id)
-	if err != nil {
-		c.l.Errorf("CreateUser: failed getting client roles ", err)
-		return err
-	}
-
-	// check if client has all required role to assign user
-	found := false
-	for _, rl := range rls {
-		if *rl.Name == string(user.Role) {
-			roles = append(roles, *rl)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return ErrRoleNotFound
-	}
-
+	var err error
 	user.ID, err = c.kc.CreateUser(c.ac.admin.AccessToken, c.realm, gocloak.User{
 		Username:      &user.Email,
 		Email:         &user.Email,
@@ -242,6 +224,18 @@ func (c *Client) UpdateUser(userID string, user KeycloakUserUpdate) error {
 		attr["plan"] = []string{*user.Plan}
 	}
 
+	if user.Group != nil {
+		u, err := c.kc.GetUserByID(c.ac.admin.AccessToken, c.realm, userID)
+		if err != nil {
+			c.l.Errorf("UpdateUser", err, "failed to get user: %s", userID)
+			return err
+		}
+		grps := strings.Split(u.Attributes["groups"][0], ",")
+		grps = append(grps, *user.Group)
+		attr = u.Attributes
+		attr["groups"] = grps
+	}
+
 	err := c.kc.UpdateUser(c.ac.admin.AccessToken, c.realm, gocloak.User{
 		FirstName:  user.Name,
 		Email:      user.Email,
@@ -271,6 +265,23 @@ func (c *Client) SetEmailVerified(userID string) error {
 		c.l.Errorf("SetEmailVerified", err, "failed to update email-verified with user_id: %s", userID)
 	}
 	return err
+}
+
+// GetUserByUsername get user details by username
+func (c *Client) GetUserByUsername(username string) (*gocloak.User, error) {
+	c.ac.mu.RLock()
+	defer c.ac.mu.RUnlock()
+
+	user, err := c.kc.GetUsers(c.ac.admin.AccessToken, c.realm, gocloak.GetUsersParams{Username: &username})
+	if err != nil {
+		c.l.Errorf("GetUserByUsername", err, "failed to get user by %s", username)
+		return nil, err
+	}
+	if len(user) == 0 {
+		c.l.Errorf("GetUserByUsername", err, "failed to get user by %s", username)
+		return nil, ErrUserNotFound
+	}
+	return user[0], nil
 }
 
 // GetUserByPhoneNumber get user details by phone number
