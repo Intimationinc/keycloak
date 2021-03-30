@@ -18,7 +18,7 @@ type Claim struct {
 	PhoneNumber         string   `json:"phone_number"`
 	PhoneNumberVerified bool     `json:"phone_number_verified"`
 	Plan                string   `json:"plan"`
-	Groups              []string `json:"groups"`
+	Groups              string 	 `json:"groups"`
 	LocalUserID         null.Int `json:"local_user_id"`
 }
 
