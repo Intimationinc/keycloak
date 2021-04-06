@@ -242,6 +242,7 @@ func (c *Client) UpdateUser(userID string, user KeycloakUserUpdate) error {
 	}
 
 	err := c.kc.UpdateUser(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.User{
+		ID:         &userID,
 		FirstName:  user.Name,
 		Email:      user.Email,
 		Enabled:    user.Enabled,
@@ -264,6 +265,7 @@ func (c *Client) SetEmailVerified(userID string) error {
 		return err
 	}
 	err = c.kc.UpdateUser(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.User{
+		ID:            &userID,
 		EmailVerified: gocloak.BoolP(true),
 	})
 	if err != nil {
