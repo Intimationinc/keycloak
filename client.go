@@ -1,12 +1,13 @@
 package keycloak
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Nerzal/gocloak/v5"
+	"github.com/Nerzal/gocloak/v8"
 	"github.com/sirupsen/logrus"
 )
 
@@ -46,6 +47,7 @@ type adminClient struct {
 // Client keycloak client
 type Client struct {
 	cfg    Config
+	ctx    context.Context
 	kc     gocloak.GoCloak
 	ac     *adminClient
 	client keycloakClient
@@ -56,13 +58,14 @@ type Client struct {
 
 // NewClient instantiate keycloak client
 func NewClient(cfg Config, l *logrus.Logger) (*Client, error) {
+	ctx := context.Background()
 	kClient := gocloak.NewClient(cfg.Host)
-	admin, err := kClient.Login(adminClientID, cfg.AdminSecret, cfg.AdminRealm, cfg.AdminUser, cfg.AdminPassword)
+	admin, err := kClient.Login(ctx, adminClientID, cfg.AdminSecret, cfg.AdminRealm, cfg.AdminUser, cfg.AdminPassword)
 	if err != nil {
 		l.Errorf("NewClient", err, "failed to log admin user in")
 		return nil, err
 	}
-	clients, err := kClient.GetClients(admin.AccessToken, cfg.ClientRealm, gocloak.GetClientsParams{ClientID: &cfg.ClientID})
+	clients, err := kClient.GetClients(ctx, admin.AccessToken, cfg.ClientRealm, gocloak.GetClientsParams{ClientID: &cfg.ClientID})
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +75,7 @@ func NewClient(cfg Config, l *logrus.Logger) (*Client, error) {
 
 	return &Client{
 		cfg: cfg,
+		ctx: ctx,
 		kc:  kClient,
 		ac: &adminClient{
 			admin:         admin,
@@ -97,13 +101,13 @@ func (c *Client) RefreshAdmin() error {
 	defer c.ac.mu.Unlock()
 
 	if time.Now().Before(c.ac.refreshExpiry) {
-		admin, err = c.kc.RefreshToken(c.ac.admin.RefreshToken, adminClientID, c.cfg.AdminSecret, c.cfg.AdminRealm)
+		admin, err = c.kc.RefreshToken(c.ctx, c.ac.admin.RefreshToken, adminClientID, c.cfg.AdminSecret, c.cfg.AdminRealm)
 		if err != nil {
 			c.l.Errorf("RefreshAdmin", err, "failed to refresh admin token")
 			return err
 		}
 	} else {
-		admin, err = c.kc.Login(adminClientID, c.cfg.AdminSecret, c.cfg.AdminRealm, c.cfg.AdminUser, c.cfg.AdminPassword)
+		admin, err = c.kc.Login(c.ctx, adminClientID, c.cfg.AdminSecret, c.cfg.AdminRealm, c.cfg.AdminUser, c.cfg.AdminPassword)
 		if err != nil {
 			c.l.Errorf("RefreshAdmin", err, "failed to login admin")
 			return err
@@ -133,14 +137,14 @@ func (c *Client) CreateUser(user *KeycloakUser, password string, temporary bool)
 	defer c.ac.mu.RUnlock()
 
 	var err error
-	user.ID, err = c.kc.CreateUser(c.ac.admin.AccessToken, c.realm, gocloak.User{
+	user.ID, err = c.kc.CreateUser(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.User{
 		Username:      &user.Email,
 		Email:         &user.Email,
 		EmailVerified: gocloak.BoolP(false),
 		Enabled:       gocloak.BoolP(true),
 		FirstName:     &user.Name,
-		Attributes:    user.Attribute,
-		Credentials: []*gocloak.CredentialRepresentation{
+		Attributes:    &user.Attribute,
+		Credentials: &[]gocloak.CredentialRepresentation{
 			{
 				Temporary: gocloak.BoolP(temporary),
 				Type:      gocloak.StringP("password"),
@@ -153,7 +157,7 @@ func (c *Client) CreateUser(user *KeycloakUser, password string, temporary bool)
 		return err
 	}
 
-	err = c.kc.AddClientRoleToUser(c.ac.admin.AccessToken, c.realm, c.client.id, user.ID, roles)
+	err = c.kc.AddClientRoleToUser(c.ctx, c.ac.admin.AccessToken, c.realm, c.client.id, user.ID, roles)
 	if err != nil {
 		c.l.Errorf("CreateUser: failed adding role to user: %s", user.ID)
 		return err
@@ -164,7 +168,7 @@ func (c *Client) CreateUser(user *KeycloakUser, password string, temporary bool)
 // Login keycloack account login
 func (c *Client) Login(username, password string) (*gocloak.JWT, error) {
 	// c.l.Started("Login")
-	t, err := c.kc.Login(c.client.clientID, c.cfg.ClientSecret, c.realm, username, password)
+	t, err := c.kc.Login(c.ctx, c.client.clientID, c.cfg.ClientSecret, c.realm, username, password)
 	if err != nil {
 		c.l.Errorf("Login", err, "failed login %s", username)
 		return nil, err
@@ -176,7 +180,7 @@ func (c *Client) Login(username, password string) (*gocloak.JWT, error) {
 // only used for the clients
 func (c *Client) Refresh(refreshToken string) (*gocloak.JWT, error) {
 	// c.l.Started("Refresh")
-	t, err := c.kc.RefreshToken(refreshToken, c.client.clientID, c.cfg.ClientSecret, c.realm)
+	t, err := c.kc.RefreshToken(c.ctx, refreshToken, c.client.clientID, c.cfg.ClientSecret, c.realm)
 	if err != nil {
 		// c.l.Errorf("Refresh", err, "failed refresh")
 		return nil, err
@@ -187,7 +191,7 @@ func (c *Client) Refresh(refreshToken string) (*gocloak.JWT, error) {
 
 // Logout scope of this method is revoke user refresh token
 func (c *Client) Logout(refreshToken string) error {
-	err := c.kc.Logout(c.client.clientID, c.cfg.ClientSecret, c.realm, refreshToken)
+	err := c.kc.Logout(c.ctx, c.client.clientID, c.cfg.ClientSecret, c.realm, refreshToken)
 	if err != nil {
 		c.l.Errorf("Logout", err, "failed logout")
 		return err
@@ -200,7 +204,7 @@ func (c *Client) CheckEnabled(userID string) (bool, error) {
 	c.ac.mu.RLock()
 	defer c.ac.mu.RUnlock()
 
-	user, err := c.kc.GetUserByID(c.ac.admin.AccessToken, c.realm, userID)
+	user, err := c.kc.GetUserByID(c.ctx, c.ac.admin.AccessToken, c.realm, userID)
 	if err != nil {
 		c.l.Errorf("CheckEnabled", err, "failed to get user: %s", userID)
 		return false, err
@@ -215,32 +219,33 @@ func (c *Client) UpdateUser(userID string, user KeycloakUserUpdate) error {
 
 	var attr map[string][]string
 	if user.Plan != nil {
-		u, err := c.kc.GetUserByID(c.ac.admin.AccessToken, c.realm, userID)
+		u, err := c.kc.GetUserByID(c.ctx, c.ac.admin.AccessToken, c.realm, userID)
 		if err != nil {
 			c.l.Errorf("UpdateUser", err, "failed to get user: %s", userID)
 			return err
 		}
-		attr = u.Attributes
+		attr = *u.Attributes
 		attr["plan"] = []string{*user.Plan}
 	}
 
 	if user.Group != nil {
-		u, err := c.kc.GetUserByID(c.ac.admin.AccessToken, c.realm, userID)
+		u, err := c.kc.GetUserByID(c.ctx, c.ac.admin.AccessToken, c.realm, userID)
 		if err != nil {
 			c.l.Errorf("UpdateUser", err, "failed to get user: %s", userID)
 			return err
 		}
-		grps := strings.Split(u.Attributes["groups"][0], ",")
+		grps := strings.Split((*u.Attributes)["groups"][0], ",")
+
 		grps = append(grps, *user.Group)
-		attr = u.Attributes
+		attr = *u.Attributes
 		attr["groups"] = grps
 	}
 
-	err := c.kc.UpdateUser(c.ac.admin.AccessToken, c.realm, gocloak.User{
+	err := c.kc.UpdateUser(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.User{
 		FirstName:  user.Name,
 		Email:      user.Email,
 		Enabled:    user.Enabled,
-		Attributes: attr,
+		Attributes: &attr,
 	})
 	if err != nil {
 		c.l.Errorf("UpdateUser", err, "failed to update user: %s", userID)
@@ -253,12 +258,12 @@ func (c *Client) SetEmailVerified(userID string) error {
 	c.ac.mu.RLock()
 	defer c.ac.mu.RUnlock()
 
-	_, err := c.kc.GetUserByID(c.ac.admin.AccessToken, c.realm, userID)
+	_, err := c.kc.GetUserByID(c.ctx, c.ac.admin.AccessToken, c.realm, userID)
 	if err != nil {
 		c.l.Errorf("SetEmailVerified", err, "failed to get user: %s", userID)
 		return err
 	}
-	err = c.kc.UpdateUser(c.ac.admin.AccessToken, c.realm, gocloak.User{
+	err = c.kc.UpdateUser(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.User{
 		EmailVerified: gocloak.BoolP(true),
 	})
 	if err != nil {
@@ -272,7 +277,7 @@ func (c *Client) GetUserByUsername(username string) (*gocloak.User, error) {
 	c.ac.mu.RLock()
 	defer c.ac.mu.RUnlock()
 
-	user, err := c.kc.GetUsers(c.ac.admin.AccessToken, c.realm, gocloak.GetUsersParams{Username: &username})
+	user, err := c.kc.GetUsers(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.GetUsersParams{Username: &username})
 	if err != nil {
 		c.l.Errorf("GetUserByUsername", err, "failed to get user by %s", username)
 		return nil, err
@@ -289,7 +294,7 @@ func (c *Client) GetUserByPhoneNumber(phone string) (*gocloak.User, error) {
 	c.ac.mu.RLock()
 	defer c.ac.mu.RUnlock()
 
-	user, err := c.kc.GetUsers(c.ac.admin.AccessToken, c.realm, gocloak.GetUsersParams{Username: &phone})
+	user, err := c.kc.GetUsers(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.GetUsersParams{Username: &phone})
 	if err != nil {
 		c.l.Errorf("GetUserByPhoneNumber", err, "failed to get user by %s", phone)
 		return nil, err
@@ -305,7 +310,7 @@ func (c *Client) GetUserByPhoneNumber(phone string) (*gocloak.User, error) {
 func (c *Client) ResetPassword(userID, password string) error {
 	c.ac.mu.RLock()
 	defer c.ac.mu.RUnlock()
-	err := c.kc.SetPassword(c.ac.admin.AccessToken, userID, c.realm, password, false)
+	err := c.kc.SetPassword(c.ctx, c.ac.admin.AccessToken, userID, c.realm, password, false)
 	if err != nil {
 		c.l.Errorf("ResetPassword", err, "failed to update password with user_id: %s", userID)
 		return err
@@ -320,13 +325,13 @@ func (c *Client) VerifyToken(accessToken string) (*Claim, error) {
 		iss:      c.iss,
 	}
 
-	_, err := c.kc.DecodeAccessTokenCustomClaims(accessToken, c.realm, claim)
+	_, err := c.kc.DecodeAccessTokenCustomClaims(c.ctx, accessToken, c.realm, "", claim)
 	if err != nil {
 		c.l.Errorf("VerifyToken", err, "failed decode token")
 		return claim, err
 	}
 
-	if err := claim.Valid(); err != nil {
+	if err := claim.Valid(nil); err != nil {
 		c.l.Errorf("VerifyToken", ErrInvalidToken, "validation failed")
 		return claim, ErrInvalidToken
 	}
