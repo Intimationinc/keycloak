@@ -3,7 +3,7 @@ package keycloak
 import (
 	"context"
 	"errors"
-	"strings"
+	"fmt"
 	"sync"
 	"time"
 
@@ -234,11 +234,10 @@ func (c *Client) UpdateUser(userID string, user KeycloakUserUpdate) error {
 			c.l.Errorf("UpdateUser", err, "failed to get user: %s", userID)
 			return err
 		}
-		grps := strings.Split((*u.Attributes)["groups"][0], ",")
 
-		grps = append(grps, *user.Group)
+		grps := fmt.Sprintf("%s,%s", (*u.Attributes)["groups"][0], *user.Group)
 		attr = *u.Attributes
-		attr["groups"] = grps
+		attr["groups"] = []string{grps}
 	}
 
 	err := c.kc.UpdateUser(c.ctx, c.ac.admin.AccessToken, c.realm, gocloak.User{
