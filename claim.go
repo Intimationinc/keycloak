@@ -18,6 +18,7 @@ type Claim struct {
 	Plan                string   `json:"plan"`
 	Groups              string   `json:"groups"`
 	LocalUserID         null.Int `json:"local_user_id"`
+	CvBuilderUserID     null.Int `json:"cvbuilder_user_id"`
 }
 
 // Valid validate the jwt token
