@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Nerzal/gocloak/v12"
 	"sync"
 	"time"
 
-	"github.com/Nerzal/gocloak/v8"
 	"github.com/sirupsen/logrus"
 )
 
@@ -48,7 +48,7 @@ type adminClient struct {
 type Client struct {
 	cfg    Config
 	ctx    context.Context
-	kc     gocloak.GoCloak
+	kc     *gocloak.GoCloak
 	ac     *adminClient
 	client keycloakClient
 	realm  string
@@ -326,14 +326,14 @@ func (c *Client) VerifyToken(accessToken string) (*Claim, error) {
 		iss:      c.iss,
 	}
 
-	_, err := c.kc.DecodeAccessTokenCustomClaims(c.ctx, accessToken, c.realm, "", claim)
+	_, err := c.kc.DecodeAccessTokenCustomClaims(c.ctx, accessToken, c.realm, claim)
 	if err != nil {
 		c.l.Errorf("VerifyToken", err, "failed decode token")
 		return claim, err
 	}
 
-	if err := claim.Valid(nil); err != nil {
-		c.l.Errorf("VerifyToken", ErrInvalidToken, "validation failed")
+	if err := claim.Valid(); err != nil {
+		c.l.Errorf("VerifyToken: %s\n", ErrInvalidToken, "validation failed")
 		return claim, ErrInvalidToken
 	}
 	return claim, nil

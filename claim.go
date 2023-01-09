@@ -22,10 +22,7 @@ type Claim struct {
 }
 
 // Valid validate the jwt token
-func (cl *Claim) Valid(h *jwt.ValidationHelper) error {
-	if h == nil {
-		h = jwt.DefaultValidationHelper
-	}
+func (cl Claim) Valid() error {
 	if cl.AuthorizedParty != cl.clientID {
 		return ErrInvalidToken
 	}
