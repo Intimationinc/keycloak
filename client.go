@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Nerzal/gocloak/v12"
 	"sync"
 	"time"
+
+	"github.com/Nerzal/gocloak/v13"
 
 	"github.com/sirupsen/logrus"
 )
@@ -323,7 +324,6 @@ func (c *Client) ResetPassword(userID, password string) error {
 func (c *Client) VerifyToken(accessToken string) (*Claim, error) {
 	claim := &Claim{
 		clientID: c.client.clientID,
-		iss:      c.iss,
 	}
 
 	_, err := c.kc.DecodeAccessTokenCustomClaims(c.ctx, accessToken, c.realm, claim)
